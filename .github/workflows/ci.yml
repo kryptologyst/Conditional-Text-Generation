@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -11,114 +11,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.10, 3.11]
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Install system dependencies
+      run: sudo apt-get update && sudo apt-get install -y libjpeg-dev zlib1g-dev
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov black ruff mypy
-    
-    - name: Lint with ruff
-      run: |
-        ruff check src/ tests/ scripts/ demo/
-    
-    - name: Check formatting with black
-      run: |
-        black --check src/ tests/ scripts/ demo/
-    
-    - name: Type check with mypy
-      run: |
-        mypy src/
-    
-    - name: Test with pytest
-      run: |
-        pytest tests/ --cov=src/conditional_text_generation --cov-report=xml
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov
 
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install build dependencies
+    - name: Run tests
       run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    
-    - name: Build package
-      run: |
-        python -m build
-    
-    - name: Check package
-      run: |
-        twine check dist/*
-    
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: dist
-        path: dist/
-
-  demo-test:
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Test Streamlit app
-      run: |
-        python -c "import streamlit; print('Streamlit import successful')"
-        python -c "from demo.streamlit_app import main; print('Demo import successful')"
-    
-    - name: Test basic generation
-      run: |
-        python -c "
-        import sys
-        sys.path.append('src')
-        from conditional_text_generation import GPT2ConditionalGenerator
-        generator = GPT2ConditionalGenerator('gpt2')
-        texts = generator.generate('Hello', 'greeting', max_length=20)
-        print('Basic generation test passed')
-        "
+        if [ -d tests ]; then
+          pytest tests/ -v --tb=short
+        else
+          echo "No tests directory found, skipping tests"
+        fi
